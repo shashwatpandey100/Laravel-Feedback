@@ -35,17 +35,40 @@ RUN chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cac
 RUN composer install --no-interaction --optimize-autoloader --no-dev
 RUN npm install && npm run build
 
-# Generate key
+# Create .env file from example
+RUN cp .env.example .env
+
+# Generate key - now we have an .env file
 RUN php artisan key:generate
 
 # Configure Apache
 RUN a2enmod rewrite
-COPY docker/000-default.conf /etc/apache2/sites-available/000-default.conf
+# Create the directory first to avoid errors
+RUN mkdir -p docker
+
+# Create default Apache config
+RUN echo '<VirtualHost *:80>\n\
+    ServerAdmin webmaster@localhost\n\
+    DocumentRoot /var/www/html/public\n\
+    <Directory /var/www/html/public>\n\
+        AllowOverride All\n\
+        Require all granted\n\
+    </Directory>\n\
+    ErrorLog ${APACHE_LOG_DIR}/error.log\n\
+    CustomLog ${APACHE_LOG_DIR}/access.log combined\n\
+</VirtualHost>' > /etc/apache2/sites-available/000-default.conf
 
 # Expose port 80
 EXPOSE 80
 
-# Run script to start Apache
-COPY docker/start.sh /usr/local/bin/start.sh
+# Create start script
+RUN echo '#!/bin/bash\n\
+# Run Laravel migrations\n\
+php artisan migrate --force\n\
+# Start Apache\n\
+apache2-foreground' > /usr/local/bin/start.sh
+
 RUN chmod +x /usr/local/bin/start.sh
+
+# Start the application
 CMD ["/usr/local/bin/start.sh"]
